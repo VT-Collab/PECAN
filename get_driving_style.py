@@ -194,7 +194,7 @@ def main():
 
     # create user folder
     data_folder = 'carlo_study/user_' + ui
-    os.mkdir(data_folder)
+    os.makedirs(data_folder)
 
     pickle.dump(user_styles[:num_styles, :], open(data_folder + '/driving_styles.pkl', 'wb'))
     pickle.dump(user_styles[num_styles:, :], open(data_folder + '/practice_driving_styles.pkl', 'wb'))
