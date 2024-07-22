@@ -1,11 +1,8 @@
-from utils import plotGUI
+from utils import plotGUI, CARTrajectory, target_check_message
 import time
 import torch
 import pickle
 from models import *
-from world import World
-from agents import Car, RectangleBuilding, Painting, SpeedMeter, DistanceMeter
-from geometry import Point
 from copy import deepcopy
 from colorama import init as colorama_init
 from colorama import Fore
@@ -31,8 +28,6 @@ def rollout(z_task, z_style, start_state):
 
     zt = torch.FloatTensor(z_task).unsqueeze(0)
     zs = torch.FloatTensor([z_style])
-    # zs_zt = torch.cat((zs, zt), 1)
-    # action_traj = model.traj_decoder(zs_zt).detach().squeeze(0).numpy()
     action_traj = model.decoder(zt, zs).detach().squeeze(0).numpy()
 
     state_traj = actions_to_states(action_traj, start_state)
@@ -40,169 +35,16 @@ def rollout(z_task, z_style, start_state):
     return state_traj
 
 
-def simulate_highway(w, dt, traj):
-    # add buildings
-    w.add(Painting(Point(103.5, 60), Point(35, 120), 'gray80'))
-    w.add(RectangleBuilding(Point(104.5, 60), Point(32.5, 120)))
-    w.add(Painting(Point(37.5, 60), Point(75, 120), 'gray80'))
-    w.add(RectangleBuilding(Point(36.5, 60), Point(72.5, 120)))
-
-    # add cars
-    c1 = Car(Point(80, 20), np.pi / 2, 'orange')
-    w.add(c1)
-    c2 = Car(Point(80, 70), np.pi / 2, 'blue')
-    w.add(c2)
-
-    # initialize sensors
-    init_speed = 0
-    sm = SpeedMeter(Point(25, 100), np.pi / 2, 'Max. Speed: ' + str(init_speed), 'green')
-    w.add(sm)
-    init_distance = np.round(c1.distanceTo(c2))
-    dm = DistanceMeter(Point(26, 85), np.pi / 2, 'Min. Distance: ' + str(init_distance), 'red')
-    w.add(dm)
-
-    w.render()
-
-    # initialise
-    step = 0
-    h_goal_y = 100.
-    max_delta = 0.
-    min_dist = np.inf
-
-    # simulate
-    while step < len(traj) and c1.center.y < h_goal_y:
-
-        state = traj[step]
-
-        delta_state = np.linalg.norm([state[0] - c1.center.x, state[1] - c1.center.y])
-
-        if delta_state > max_delta:
-            max_delta = deepcopy(delta_state)
-
-        if c1.distanceTo(c2) < min_dist:
-            min_dist = deepcopy(c1.distanceTo(c2))
-
-        c1.center.x = state[0]
-        c1.center.y = state[1]
-        c2.center.y = state[3]
-
-        for agent in w.agents:
-            if isinstance(agent, SpeedMeter):
-                delta_scale = 7.8  # 5.3  # 3.5
-                speed = np.round(max_delta*delta_scale)
-                agent.text = "Max. Speed: " + str(speed)
-            if isinstance(agent, DistanceMeter):
-                distance = np.round(min_dist)
-                agent.text = "Min. Distance: " + str(distance)
-
-        w.tick()
-        w.render()
-        time.sleep(dt)
-
-        step += 1
-
-    return speed, distance
-
-
-def simulate_intersection(w, dt, traj):
-    # add buildings
-    w.add(Painting(Point(93.5, 106.5), Point(55, 27), 'gray80'))
-    w.add(RectangleBuilding(Point(94.5, 107.5), Point(52.5, 25)))
-    w.add(Painting(Point(27.5, 106.5), Point(55, 27), 'gray80'))
-    w.add(RectangleBuilding(Point(26.5, 107.5), Point(52.5, 25)))
-    w.add(Painting(Point(93.5, 41), Point(55, 82), 'gray80'))
-    w.add(RectangleBuilding(Point(94.5, 40), Point(52.5, 80)))
-    w.add(Painting(Point(27.5, 41), Point(55, 82), 'gray80'))
-    w.add(RectangleBuilding(Point(26.5, 40), Point(52.5, 80)))
-
-    # add crossings
-    w.add(Painting(Point(56, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(57, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(58, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(59, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(60, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(61, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(62, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(63, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(64, 81), Point(0.5, 2), 'white'))
-    w.add(Painting(Point(65, 81), Point(0.5, 2), 'white'))
-
-    w.add(Painting(Point(67, 83), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 84), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 85), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 86), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 87), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 88), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 89), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 90), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 91), Point(2, 0.5), 'white'))
-    w.add(Painting(Point(67, 92), Point(2, 0.5), 'white'))
-
-    # add cars
-    c1 = Car(Point(60, 35), np.pi / 2, 'orange')
-    w.add(c1)
-    c2 = Car(Point(80, 90), np.pi, 'blue')
-    w.add(c2)
-
-    # initialize sensors
-    init_speed = 0
-    sm = SpeedMeter(Point(25, 70), np.pi / 2, 'Max. Speed: ' + str(init_speed), 'green')
-    w.add(sm)
-    init_distance = np.round(c1.distanceTo(c2))
-    dm = DistanceMeter(Point(26, 55), np.pi / 2, 'Min. Distance: ' + str(init_distance), 'red')
-    w.add(dm)
-
-    w.render()
-
-    # initialise
-    step = 0
-    h_goal_y = 100.
-    max_delta = 0.
-    min_dist = np.inf
-
-    # simulate
-    while step < len(traj) and c1.center.y < h_goal_y:
-
-        state = traj[step]
-
-        delta_state = np.linalg.norm([state[0] - c1.center.x, state[1] - c1.center.y])
-
-        if delta_state > max_delta:
-            max_delta = deepcopy(delta_state)
-
-        if c1.distanceTo(c2) < min_dist:
-            min_dist = deepcopy(c1.distanceTo(c2))
-
-        c1.center.x = state[0]
-        c1.center.y = state[1]
-        c2.center.x = state[2]
-
-        for agent in w.agents:
-            if isinstance(agent, SpeedMeter):
-                delta_scale = 7.8  # 5.3  # 3.5
-                speed = np.round(max_delta*delta_scale)
-                agent.text = "Max. Speed: " + str(speed)
-            if isinstance(agent, DistanceMeter):
-                distance = np.round(min_dist)
-                agent.text = "Min. Distance: " + str(distance)
-
-        w.tick()
-        w.render()
-        time.sleep(dt)
-
-        step += 1
-
-    return speed, distance
-
-
 def showCorners(init_styles):
     corners = {'styles': init_styles}
+    env = 'highway'
     task_idx = 0
+
     for corner in corners['styles']:
         print("")
 
         # Launch gui
-        gui = plotGUI(task_idx, corners, show_Demos=True, corner=corner)
+        gui = plotGUI(corners, show_Demos=True, corner=corner)
 
         z_task = task_embedding[task_idx]
         z_style = corner
@@ -210,17 +52,10 @@ def showCorners(init_styles):
         state_traj = rollout(z_task, z_style, start_states[task_idx])
 
         # Simulate
-        dt = 0.2
-        w = World(dt, width=120, height=120, ppm=6)
+        car_traj = CARTrajectory(env, state_traj)
+        car_traj.visualize()
 
-        if task_idx == 0:
-            speed, distance = simulate_highway(w, dt, state_traj)
-        elif task_idx == 1:
-            speed, distance = simulate_intersection(w, dt, state_traj)
-        else:
-            print("Task not implemented.")
-            speed, distance = None, None
-        w.close()
+        speed, distance = car_traj.speed, car_traj.distance
 
         print('Point:', corner, 'Style:', [speed, distance])
 
@@ -251,7 +86,7 @@ def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
 
         while not user_sel and not terminate:
             # Launch gui
-            gui = plotGUI(task_idx, prev_styles, target_style=target_style)
+            gui = plotGUI(prev_styles, target_style=target_style)
 
             z_style = gui.style
             terminate = gui.terminate
@@ -274,17 +109,16 @@ def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
         intersection_traj = rollout(task_embedding[1], z_style, start_states[1])
 
         # Simulate trajectories
-        dt = 0.2
-        w = World(dt, width=120, height=120, ppm=6)
-        highway_speed, highway_distance = simulate_highway(w, dt, highway_traj)
-        w.close()
+        highway_sim = CARTrajectory(env='highway', trajectory=highway_traj)
+        highway_sim.visualize()
+        highway_speed, highway_distance = highway_sim.speed, highway_sim.distance
 
-        w = World(dt, width=120, height=120, ppm=6)
-        inter_speed, inter_distance = simulate_intersection(w, dt, intersection_traj)
-        w.close()
+        intersec_sim = CARTrajectory(env='intersection', trajectory=intersection_traj)
+        intersec_sim.visualize()
+        intersec_speed, intersec_distance = intersec_sim.speed, intersec_sim.distance
 
         # Check if rollout style is within tolerance
-        rollout_style = [[highway_speed, highway_distance], [inter_speed, inter_distance]]
+        rollout_style = [[highway_speed, highway_distance], [intersec_speed, intersec_distance]]
         style_diff = np.abs(rollout_style - target_style)
         met_target = np.where(style_diff <= style_tolerance, True, False)
 
@@ -293,21 +127,8 @@ def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
         print(Fore.LIGHTYELLOW_EX + 'Attempt:', count_trials)
         print(Fore.GREEN + '[INFO] Point:', np.round(z_style, 2), 'Style:', rollout_style)
 
-        # Print helper message if target not met
-        for task_idx, task_style in enumerate(rollout_style):
-
-            if task_style[0] > target_style[0] + style_tolerance[0]:
-                print('[INFO] Task {}: Speed too high'.format(task_idx + 1))
-
-            elif task_style[0] < target_style[0] - style_tolerance[0]:
-                print('[INFO] Task {}: Speed too low'.format(task_idx + 1))            
-
-            
-            if task_style[1] > target_style[1] + style_tolerance[1]:
-                print('[INFO] Task {}: Distance too far'.format(task_idx + 1))
-
-            elif task_style[1] < target_style[1] - style_tolerance[1]:
-                print('[INFO] Task {}: Distance too close'.format(task_idx + 1))            
+        # Print helper message if target not met 
+        target_check_message(target_style, rollout_style, style_tolerance)           
         print(Style.RESET_ALL)
 
         if save_Data:
@@ -337,7 +158,7 @@ task_embedding = [[0., 1.], [1., 0.]]
 
 # load trained model
 torch.manual_seed(0)
-model = MyModel()
+model = PECAN()
 model.load_state_dict(torch.load('data/model_24'))
 model.eval()
 
@@ -352,15 +173,13 @@ style_tolerance = [15, 5]
 
 def main():
     init_styles = [[-1, -1], [-1, 1], [1, 1], [1, -1]]
-
-    task_idx = 0
     prev_styles = {'styles': deepcopy(init_styles)}
 
     # show initial
     print("")
     print("----------------------------------------")
     print("Press ESC to see the four styles ...")
-    gui = plotGUI(task_idx, prev_styles)
+    gui = plotGUI(prev_styles)
     showCorners(init_styles)
 
     print()
