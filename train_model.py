@@ -110,32 +110,13 @@ h_dy_list = np.linspace(10, 30, 11)
 h_styles = [hs for hs in product(h_vel_list, h_dy_list)]
 
 # load training data
-load_demos = False
 tasks = ['highway', 'intersection']
 n_tasks = len(tasks)
 
-if load_demos:
-    n_label_iters, n_rand_iters = 1, 2
-    labeled_demos, unlabeled_demos = [], []
-    for task_name in tasks:
-        for ni in range(n_label_iters):
-            for hs1 in h_vel_list:
-                for hs2 in h_dy_list:
-                    file_name = "demos/" + task_name + str(hs1) + "_" + str(hs2) + "_" + str(ni) + ".pkl"
-                    demo = pickle.load(open(file_name, "rb"))
-                    labeled_demos.append(demo)
-
-        for ri in range(n_rand_iters):
-            file_name = "demos/" + task_name + "0_0_" + str(ri) + ".pkl"
-            demo = pickle.load(open(file_name, "rb"))
-            unlabeled_demos.append(demo)
-    raw_train_data = labeled_demos + unlabeled_demos
-
-else:
-    raw_train_data = []
-    for task_name in tasks:
-        task_data = pickle.load(open('data/' + task_name + '_trajectories.pkl', 'rb'))
-        raw_train_data += task_data
+raw_train_data = []
+for task_name in tasks:
+    task_data = pickle.load(open('data/' + task_name + '_trajectories.pkl', 'rb'))
+    raw_train_data += task_data
 
 pickle.dump(raw_train_data, open("data/dataset.pkl", "wb"))
 
@@ -156,79 +137,76 @@ extreme_labels = [[extreme_styles.index(hs)] if hs in extreme_styles else [np.NA
 extreme_labels *= n_tasks
 
 # style labels
-# labels_train = extreme_labels [[np.NAN]]*len(unlabeled_demos)
 labels_train = [extreme_styles.index(hs) for hs in extreme_styles]*n_tasks
 
-# split data
+# Labeled data for training
 labeled_data = [traj_data for data_idx, traj_data in enumerate(data_train) if not np.isnan(extreme_labels[data_idx][0])]
+
+# Unlabeled data for training
 unlabeled_data = [traj_data for data_idx, traj_data in enumerate(data_train) if np.isnan(extreme_labels[data_idx][0])]
 n_task_demos_unlabeled = int(len(unlabeled_data)/n_tasks)
-n_task_demos_split = 8  # int(len(labels_train)/n_tasks)
+n_task_demos_split = 8
 split_task1_idx = np.random.choice(np.arange(0, n_task_demos_unlabeled), n_task_demos_split)
 split_task2_idx = np.random.choice(np.arange(n_task_demos_unlabeled, n_task_demos_unlabeled*2), n_task_demos_split)
 split_data_task1 = [unlabeled_data[idx] for idx in split_task1_idx]
 split_data_task2 = [unlabeled_data[idx] for idx in split_task2_idx]
 dataset = split_data_task1 + split_data_task2 + labeled_data
 
-# ground-truth task labels
-tasks_onehot = np.array([[0., 1.]]*n_task_demos + [[1., 0.]]*n_task_demos)
-tasks_onehot_flipped = np.array([[1., 0.]]*n_task_demos + [[0., 1.]]*n_task_demos)
+# training data
+XY_train = torch.FloatTensor(dataset)
+labelset = torch.FloatTensor(labeled_data)
+labels = torch.FloatTensor(labels_train).long()
 
-# testing loss metric
-recon_loss = nn.MSELoss()
+# Initialize model
+torch.manual_seed(0)
+model = PECAN()
 
-# run experiment
-train_iters = 1
-for i in range(train_iters):
+# Training parameters
+EPOCH = 6000
+BATCH_SIZE = 8
+LR = 8e-4
+train_data = MotionData(XY_train)
+train_set = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=True)
+optimizer = optim.Adam(model.parameters(), lr=LR)
+losses = []
 
-    # training data
-    XY_train = torch.FloatTensor(dataset)
-    labelset = torch.FloatTensor(labeled_data)
-    labels = torch.FloatTensor(labels_train).long()
+# Run training loop
+for epoch in range(EPOCH):
+    for batch, x in enumerate(train_set):
 
-    # train task encoder
-    torch.manual_seed(0)
-    model = PECAN()
+        loss_1 = model.loss_func(x, model.decoder(model.task_encode(x), model.style_encode(x)))
+        loss_2 = model.cel_func(model.classifier(model.style_encode(labelset)), labels)
+        loss = loss_1 + loss_2
 
-    EPOCH = 6000
-    BATCH_SIZE = 8
-    LR = 8e-4
-    train_data = MotionData(XY_train)
-    train_set = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=True)
-    optimizer = optim.Adam(model.parameters(), lr=LR)
-    losses = []
-    for epoch in range(EPOCH):
-        for batch, x in enumerate(train_set):
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+    losses.append(loss.item())
+    print(f'Epoch [{epoch + 1}/{EPOCH}], Loss: {loss.item():.10f}')
 
-            loss_1 = model.loss_func(x, model.decoder(model.task_encode(x), model.style_encode(x)))
-            loss_2 = model.cel_func(model.classifier(model.style_encode(labelset)), labels)
-            loss = loss_1 + loss_2
+# plot training loss
+plt.figure()
+plt.plot(losses)
+plt.show()
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        losses.append(loss.item())
-        print(f'Epoch [{epoch + 1}/{EPOCH}], Loss: {loss.item():.10f}')
+torch.manual_seed(0)
+model.eval()
 
-    # plot training loss
-    plt.figure()
-    plt.plot(losses)
-    # plt.yscale('log')
-    plt.show()
+# test task encoder
+ZT = model.task_encode(torch.FloatTensor(labelset)).detach().numpy()
+print(np.round(ZT, decimals=2))
 
-    torch.manual_seed(0)
-    model.eval()
+# test style encoder
+ZS = model.style_encode(torch.FloatTensor(labelset)).detach().numpy()
+print(np.round(ZS, decimals=3))
 
-    # test task encoder
-    ZT = model.task_encode(torch.FloatTensor(labelset)).detach().numpy()
-    print(np.round(ZT, decimals=2))
+# save model
+torch.save(model.state_dict(), "data/model_24")
+print("Saved model.")
 
-    # test style encoder
-    ZS = model.style_encode(torch.FloatTensor(labelset)).detach().numpy()
-    print(np.round(ZS, decimals=3))
-
-    # save model
-    torch.save(model.state_dict(), "data/model_24")
-    print("Saved model.")
+# save tasks embedding
+task_embedding = [ZT[0], ZT[4]]
+pickle.dump(task_embedding, open('data/task_embedding.pkl', 'wb'))
+print(task_embedding)
 
 print("Done.")

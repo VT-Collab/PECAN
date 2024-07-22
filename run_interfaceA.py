@@ -60,18 +60,10 @@ def showCorners(init_styles):
         print('Point:', corner, 'Style:', [speed, distance])
 
 
-def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
+def checkTargetStyle(prev_styles, target_style, target_idx, teaching_round=False):
     # Initialize variables
-    task_idx = 0
     met_target = False
     count_trials = 0
-
-    if save_Data:
-        # Initialize data to be saved
-        z_style_list = []
-        rollouts_list = {'highway': [], 'intersection': []}
-        rollouts_style_list = {'highway': [], 'intersection': []}
-
 
     while not np.all(met_target):
         count_trials += 1
@@ -94,7 +86,7 @@ def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
             if z_style is not None:
                 user_sel = True
 
-            if terminate and save_Data:
+            if terminate and teaching_round:
                 terminate = False
 
         # Terminate the function for this style
@@ -131,20 +123,6 @@ def checkTargetStyle(prev_styles, target_style, target_idx, save_Data=False):
         target_check_message(target_style, rollout_style, style_tolerance)           
         print(Style.RESET_ALL)
 
-        if save_Data:
-            # Update data file
-            z_style_list.append(z_style)
-            rollouts_list['highway'].append(highway_traj)
-            rollouts_list['intersection'].append(intersection_traj)
-            rollouts_style_list['highway'].append(rollout_style[0])
-            rollouts_style_list['intersection'].append(rollout_style[1])
-
-            # Save data
-            pickle.dump(count_trials, open(data_folder + '/ours_trials' + str(target_idx+1) + '.pkl', 'wb'))
-            pickle.dump(z_style_list, open(data_folder + '/ours_z_styles' + str(target_idx+1) + '.pkl', 'wb'))
-            pickle.dump(rollouts_list, open(data_folder + '/ours_trajectories' + str(target_idx+1) + '.pkl', 'wb'))
-            pickle.dump(rollouts_style_list, open(data_folder + '/ours_styles' + str(target_idx+1) + '.pkl', 'wb'))
-
 
 # Get user id
 ui = input("Enter user id: ")
@@ -153,8 +131,8 @@ ui = input("Enter user id: ")
 dataset = pickle.load(open("data/dataset.pkl", "rb"))
 start_states = [dataset[0][0], dataset[-1][0]]
 
-# Define task embedding index order
-task_embedding = [[0., 1.], [1., 0.]]
+# Load task embedding order
+task_embedding = pickle.load(open('data/task_embedding.pkl', 'rb'))
 
 # load trained model
 torch.manual_seed(0)
@@ -219,7 +197,7 @@ def main():
         print('Target distance between', target_style[1] - style_tolerance[1], '-', target_style[1] + style_tolerance[1])   
         print(Style.RESET_ALL)
 
-        checkTargetStyle(prev_styles, target_style, target_idx, save_Data=True)
+        checkTargetStyle(prev_styles, target_style, target_idx, teaching_round=True)
       
     print()
     print("Closing Interface, You met all the targets")

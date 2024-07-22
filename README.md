@@ -18,7 +18,7 @@ We provide the trained model used in our user study (see video [here](https://yo
 ```
 python get_driving_styles.py
 ```
-This will show you an example simulation for both tasks (highway and intersection) and ask your for a user id. It then generates 4 practice styles and 4 teaching styles (e.g. [speed, distance] = [95, 10]).
+This will show you an example simulation for both tasks (highway and intersection) and ask your for a user id. It then generates 4 practice styles and 4 teaching styles (e.g. [speed, distance] = [95, 10]). It is possible to skip any practice styles by pressing 'escape' on the keyboard. 
 
 2. Run PECAN's interface
 ```
