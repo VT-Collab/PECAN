@@ -1,5 +1,4 @@
 import os
-import aprel
 import numpy as np
 import pickle
 from world import World

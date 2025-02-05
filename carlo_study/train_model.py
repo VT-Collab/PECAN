@@ -133,7 +133,7 @@ n_task_demos = int(n_train_demos/n_tasks)
 # style extremes
 extreme_styles = [es for es in product([min(h_vel_list), max(h_vel_list)],
                                        [min(h_dy_list), max(h_dy_list)])]
-extreme_labels = [[extreme_styles.index(hs)] if hs in extreme_styles else [np.NAN] for hs in h_styles]
+extreme_labels = [[extreme_styles.index(hs)] if hs in extreme_styles else [np.nan] for hs in h_styles]
 extreme_labels *= n_tasks
 
 # style labels
